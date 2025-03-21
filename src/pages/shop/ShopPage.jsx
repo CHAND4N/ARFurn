@@ -1,21 +1,26 @@
-import React from 'react'
-import bannerImg from '../../assets/banner.png';
-import Products from './Products';
+import React from "react";
+import bannerImg from "../../assets/banner.png";
+import Products from "./Products";
+
 const ShopPage = () => {
   return (
     <div className="min-h-screen">
-      {/* banner */}
+      {/* Banner Section */}
       <div
-        className="w-full h-[400px] bg-cover bg-center flex items-center justify-center text-white"
+        className="w-full h-[400px] bg-cover bg-center flex items-center justify-center text-white text-center px-4"
         style={{ backgroundImage: `url(${bannerImg})` }}
       >
-        <h1 className="text-5xl font-bold">Shop Our Products</h1>
+        <h1 className="text-4xl md:text-5xl font-bold drop-shadow-lg">
+          Shop Our Products
+        </h1>
       </div>
 
-      {/* product page */}
-      <Products headline="What's Your Choice"/>
+      {/* Product Section */}
+      <div className="container mx-auto px-4">
+        <Products headline="What's Your Choice?" />
+      </div>
     </div>
-  )
-}
+  );
+};
 
-export default ShopPage
+export default ShopPage;
