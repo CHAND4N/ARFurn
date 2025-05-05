@@ -1,11 +1,16 @@
 import React, { useRef, useState } from 'react';
+import ColorThief from 'colorthief';
 
 const CaptureImage = ({ onCapture, onColorExtracted, product }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+
   const [colorSuggestions, setColorSuggestions] = useState(null);
   const [isCameraStarted, setIsCameraStarted] = useState(false);
   const [copiedColorKey, setCopiedColorKey] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [previewMode, setPreviewMode] = useState(false);
 
   const startCamera = () => {
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -13,14 +18,38 @@ const CaptureImage = ({ onCapture, onColorExtracted, product }) => {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
         setIsCameraStarted(true);
+        setPreviewMode(false);
+        setUploadedImage(null);
       })
       .catch((err) => {
         console.log('Error accessing camera: ', err);
-        alert('Unable to access the camera. Please check your browser permissions.');
       });
   };
 
-  const captureImage = () => {
+  const generateColorSuggestions = (canvas) => {
+    const colorThief = new ColorThief();
+    const img = new Image();
+    img.src = canvas.toDataURL('image/png');
+
+    return new Promise((resolve, reject) => {
+      img.onload = () => {
+        try {
+          const dominantColor = colorThief.getColor(img);
+          const [r, g, b] = dominantColor;
+          resolve({
+            dominant: [r, g, b],
+            light: [Math.min(255, r + 30), Math.min(255, g + 30), Math.min(255, b + 30)],
+            pastel: [Math.floor((r + 255) / 2), Math.floor((g + 255) / 2), Math.floor((b + 255) / 2)],
+            complementary: [255 - r, 255 - g, 255 - b],
+          });
+        } catch (error) {
+          reject(error);
+        }
+      };
+    });
+  };
+
+  const captureImage = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (video && canvas) {
@@ -34,36 +63,52 @@ const CaptureImage = ({ onCapture, onColorExtracted, product }) => {
       const imgData = canvas.toDataURL('image/png');
       onCapture(imgData);
 
-      const suggestions = generateColorSuggestions(canvas);
+      const suggestions = await generateColorSuggestions(canvas);
       setColorSuggestions(suggestions);
       onColorExtracted(suggestions);
     }
   };
 
-  const generateColorSuggestions = (canvas) => {
-    const ctx = canvas.getContext('2d');
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixels = imageData.data;
-
-    let r = 0, g = 0, b = 0, count = 0;
-
-    for (let i = 0; i < pixels.length; i += 4) {
-      r += pixels[i];
-      g += pixels[i + 1];
-      b += pixels[i + 2];
-      count++;
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        // Set the uploaded image for preview
+        setUploadedImage(event.target.result);
+        setPreviewMode(true);
+        setIsCameraStarted(false);
+        
+        // If there was a camera stream, stop it
+        if (videoRef.current && videoRef.current.srcObject) {
+          const tracks = videoRef.current.srcObject.getTracks();
+          tracks.forEach(track => track.stop());
+          videoRef.current.srcObject = null;
+        }
+      };
+      reader.readAsDataURL(file);
     }
+  };
 
-    r = Math.floor(r / count);
-    g = Math.floor(g / count);
-    b = Math.floor(b / count);
+  const processUploadedImage = async () => {
+    if (uploadedImage) {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
 
-    return {
-      dominant: [r, g, b],
-      light: [Math.min(255, r + 30), Math.min(255, g + 30), Math.min(255, b + 30)],
-      pastel: [Math.floor((r + 255) / 2), Math.floor((g + 255) / 2), Math.floor((b + 255) / 2)],
-      complementary: [255 - r, 255 - g, 255 - b],
-    };
+        const imgData = canvas.toDataURL('image/png');
+        onCapture(imgData);
+
+        const suggestions = await generateColorSuggestions(canvas);
+        setColorSuggestions(suggestions);
+        onColorExtracted(suggestions);
+      };
+      img.src = uploadedImage;
+    }
   };
 
   const rgbToHex = (r, g, b) => {
@@ -82,24 +127,50 @@ const CaptureImage = ({ onCapture, onColorExtracted, product }) => {
 
   return (
     <div style={{ textAlign: 'center' }}>
-      {!isCameraStarted && (
+      {/* Camera and Upload Buttons */}
+      <div style={{ marginBottom: '20px' }}>
+        {!isCameraStarted && !previewMode && (
+          <button
+            onClick={startCamera}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#28a745',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '16px',
+              marginRight: '10px',
+            }}
+          >
+            Start Camera
+          </button>
+        )}
+
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          onChange={handleImageUpload}
+          style={{ display: 'none' }}
+        />
         <button
-          onClick={startCamera}
+          onClick={() => fileInputRef.current.click()}
           style={{
             padding: '10px 20px',
-            backgroundColor: '#28a745',
+            backgroundColor: '#6c63ff',
             color: '#fff',
             border: 'none',
             borderRadius: '5px',
             cursor: 'pointer',
             fontSize: '16px',
-            marginBottom: '20px',
           }}
         >
-          Start Camera
+          Upload from Gallery
         </button>
-      )}
+      </div>
 
+      {/* Video Stream */}
       <video
         ref={videoRef}
         style={{
@@ -109,13 +180,32 @@ const CaptureImage = ({ onCapture, onColorExtracted, product }) => {
           borderRadius: '8px',
           marginBottom: '20px',
           objectFit: 'cover',
+          display: isCameraStarted ? 'block' : 'none',
         }}
         autoPlay
         muted
       ></video>
 
-      <canvas ref={canvasRef} style={{ display: 'none' }} width="640" height="480"></canvas>
+      {/* Image Preview */}
+      {previewMode && uploadedImage && (
+        <div style={{ marginBottom: '20px' }}>
+          <img 
+            src={uploadedImage} 
+            alt="Preview" 
+            style={{
+              width: '100%',
+              maxWidth: '100%',
+              height: 'auto',
+              borderRadius: '8px',
+              objectFit: 'contain',
+            }}
+          />
+        </div>
+      )}
 
+      <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
+
+      {/* Capture Button */}
       {isCameraStarted && (
         <button
           onClick={captureImage}
@@ -134,6 +224,26 @@ const CaptureImage = ({ onCapture, onColorExtracted, product }) => {
         </button>
       )}
 
+      {/* Process Uploaded Image Button */}
+      {previewMode && uploadedImage && (
+        <button
+          onClick={processUploadedImage}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#007bff',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontSize: '16px',
+            marginTop: '20px',
+          }}
+        >
+          Use This Image
+        </button>
+      )}
+
+      {/* Color Suggestions */}
       {colorSuggestions && (
         <div
           style={{
